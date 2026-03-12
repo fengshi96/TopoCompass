@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
-from matplotlib.colors import TwoSlopeNorm
 from io import BytesIO, StringIO
 
 import sys
@@ -81,6 +80,25 @@ def _grid_to_csv_bytes(kx: np.ndarray, ky: np.ndarray, z: np.ndarray, z_name: st
     kx_mesh, ky_mesh = np.meshgrid(kx, ky, indexing="xy")
     flat = np.column_stack([kx_mesh.ravel(), ky_mesh.ravel(), z.ravel()])
     return _matrix_to_csv_bytes(flat, f"kx,ky,{z_name}")
+
+
+def _apply_pi_ticks(ax: plt.Axes) -> None:
+    ticks = np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0], dtype=float) * np.pi
+    labels = [
+        r"$-2\pi$",
+        r"$-\frac{3\pi}{2}$",
+        r"$-\pi$",
+        r"$-\frac{\pi}{2}$",
+        r"$0$",
+        r"$\frac{\pi}{2}$",
+        r"$\pi$",
+        r"$\frac{3\pi}{2}$",
+        r"$2\pi$",
+    ]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(labels)
+    ax.set_yticks(ticks)
+    ax.set_yticklabels(labels)
 
 
 def _figure_to_pdf_bytes(fig: plt.Figure) -> bytes:
@@ -272,6 +290,7 @@ def _plot_band_contour(solver, nk: int, band_index: int):
         )
     ax.set_xlabel(r"$k_x$")
     ax.set_ylabel(r"$k_y$")
+    _apply_pi_ticks(ax)
     band_label = "Lower" if band_index == 0 else "Upper"
     ax.set_title(f"Band Contour ({band_label})")
     fig.colorbar(im, ax=ax, label=r"$E(k)$")
@@ -387,16 +406,6 @@ def _plot_berry_curvature(
     )
     bz_plot = bz_q @ inv_bmat.T
 
-    cmax = float(np.max(curv_plot))
-    cmin = float(np.min(curv_plot))
-    vmax = 0.8 * cmax if cmax > 0.0 else 1e-9
-    vmin = 0.2 * cmin if cmin < 0.0 else -1e-9
-    if not (vmin < 0.0 < vmax):
-        span = max(abs(cmin), abs(cmax), 1e-9)
-        vmin = -0.2 * span
-        vmax = 0.8 * span
-    norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
-
     fig, ax = plt.subplots(figsize=(4.0, 3.0), constrained_layout=True)
     im = ax.imshow(
         curv_plot,
@@ -404,12 +413,14 @@ def _plot_berry_curvature(
         origin="lower",
         interpolation="nearest",
         cmap="RdBu_r",
-        norm=norm,
+        vmin=-5.0,
+        vmax=5.0,
         aspect="auto",
     )
     ax.plot(bz_plot[:, 0], bz_plot[:, 1], color="#e11d48", ls="--", lw=0.9)
     ax.set_xlabel(r"$k_x$")
     ax.set_ylabel(r"$k_y$")
+    _apply_pi_ticks(ax)
     band_label = "Lower" if band_index == 0 else "Upper"
     ax.set_title(f"Berry Curvature ({band_label})")
     ax.text(
@@ -492,15 +503,15 @@ with pc1:
 with pc2:
     anis_a = st.number_input(r"$A$", value=0.0, format="%.6f")
 with pc3:
-    j1 = st.number_input(r"$J$", value=0.0, format="%.6f")
+    j1 = st.number_input(r"$J$", value=float(np.cos(5.0 * np.pi / 4.0)), format="%.6f")
 with pc4:
-    k_term = st.number_input(r"$K$", value=-1.0, format="%.6f")
+    k_term = st.number_input(r"$K$", value=float(np.sin(5.0 * np.pi / 4.0)), format="%.6f")
 
 pc5, pc6, pc7, pc8 = st.columns(4)
 with pc5:
-    gamma = st.number_input(r"$\Gamma$", value=-0.30, format="%.6f")
+    gamma = st.number_input(r"$\Gamma$", value=-0.50, format="%.6f")
 with pc6:
-    gamma_p = st.number_input(r"$\Gamma'$", value=-0.54, format="%.6f")
+    gamma_p = st.number_input(r"$\Gamma'$", value=-0.0, format="%.6f")
 with pc7:
     d_term = st.number_input(r"$D$", value=0.0, format="%.6f")
 with pc8:
@@ -508,7 +519,7 @@ with pc8:
 
 pc9, _, _, _ = st.columns(4)
 with pc9:
-    j3 = st.number_input(r"$J_3$", value=0.2, format="%.6f")
+    j3 = st.number_input(r"$J_3$", value=0.0, format="%.6f")
 
 st.subheader("Field and Direction")
 fcol1, fcol2, fcol3, fcol4 = st.columns(4)
@@ -528,7 +539,7 @@ with r1:
 with r2:
     contour_nk = st.number_input("Band contour grid", min_value=20, max_value=401, value=30, step=10)
 with r3:
-    chern_grid = st.number_input("Berry curvature grid", min_value=20, max_value=301, value=80, step=10)
+    chern_grid = st.number_input("Berry curvature grid", min_value=60, max_value=301, value=120, step=10)
 
 band_choice = st.selectbox(
     "Band Selection for Contours",
@@ -628,7 +639,7 @@ if st.button("Run", type="primary"):
     with c1:
         st.pyplot(fig_cut, clear_figure=True)
         if gapless_warning:
-            st.warning("Potentially gapless. Needs scaling analysis.")
+            st.warning("Potentially nodal. Needs scaling analysis.")
         b11, b12 = st.columns(2)
         with b11:
             st.download_button(
@@ -651,7 +662,7 @@ if st.button("Run", type="primary"):
     with c2:
         st.pyplot(fig_contour, clear_figure=True)
         if gapless_warning:
-            st.warning("Potentially gapless. Needs scaling analysis.")
+            st.warning("Potentially nodal. Needs scaling analysis.")
         b21, b22 = st.columns(2)
         with b21:
             st.download_button(
