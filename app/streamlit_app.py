@@ -83,16 +83,12 @@ def _grid_to_csv_bytes(kx: np.ndarray, ky: np.ndarray, z: np.ndarray, z_name: st
 
 
 def _apply_pi_ticks(ax: plt.Axes) -> None:
-    ticks = np.array([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0], dtype=float) * np.pi
+    ticks = np.array([-2.0, -1.0, 0.0, 1.0, 2.0], dtype=float) * np.pi
     labels = [
         r"$-2\pi$",
-        r"$-\frac{3\pi}{2}$",
         r"$-\pi$",
-        r"$-\frac{\pi}{2}$",
         r"$0$",
-        r"$\frac{\pi}{2}$",
         r"$\pi$",
-        r"$\frac{3\pi}{2}$",
         r"$2\pi$",
     ]
     ax.set_xticks(ticks)
