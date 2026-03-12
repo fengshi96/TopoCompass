@@ -29,13 +29,8 @@ build-backend = "setuptools.build_meta"
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = where = where = where = where = where = where = where = where = where = where = w
+where = ["src"]
 
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccnears, solve_magnon_bilinears
-from .model import SpinExchangeModel
-
-__all__ = [
-    "SpinExchangeModel",
-    "generate_bilinears",
-    "solve_magnon_bilinears",
-]
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
