@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from io import BytesIO, StringIO
+from datetime import datetime
 
 import sys
 from pathlib import Path
@@ -317,36 +318,36 @@ def _derive_berry_curvature_from_core(solver, grid_n: int, band_index: int, eps:
     kx = np.linspace(0.0, 2.0 * np.pi, grid_n, endpoint=False)
     ky = np.linspace(0.0, 2.0 * np.pi, grid_n, endpoint=False)
 
-    frames = np.empty((grid_n, grid_n), dtype=object)
+    # Store all eigenvectors in a dense complex tensor for fast vectorized overlaps.
+    probe = _band_eigenvector_from_core(solver, float(kx[0]), float(ky[0]), band_index)
+    vec_dim = probe.shape[0]
+    frames = np.empty((grid_n, grid_n, vec_dim), dtype=complex)
+    frames[0, 0, :] = probe
     for i, kxi in enumerate(kx):
         for j, kyj in enumerate(ky):
-            frames[i, j] = _band_eigenvector_from_core(solver, float(kxi), float(kyj), band_index)
+            if i == 0 and j == 0:
+                continue
+            frames[i, j, :] = _band_eigenvector_from_core(solver, float(kxi), float(kyj), band_index)
+
+    frames_x = np.roll(frames, -1, axis=0)
+    frames_y = np.roll(frames, -1, axis=1)
+    frames_xy = np.roll(frames_x, -1, axis=1)
+
+    o1 = np.sum(np.conj(frames) * frames_x, axis=2)
+    o2 = np.sum(np.conj(frames_x) * frames_xy, axis=2)
+    o3 = np.sum(np.conj(frames_xy) * frames_y, axis=2)
+    o4 = np.sum(np.conj(frames_y) * frames, axis=2)
+
+    n1 = np.abs(o1)
+    n2 = np.abs(o2)
+    n3 = np.abs(o3)
+    n4 = np.abs(o4)
+    valid = (n1 >= eps) & (n2 >= eps) & (n3 >= eps) & (n4 >= eps)
 
     flux = np.zeros((grid_n, grid_n), dtype=float)
-    for i in range(grid_n):
-        ip = (i + 1) % grid_n
-        for j in range(grid_n):
-            jp = (j + 1) % grid_n
-
-            u00 = frames[i, j]
-            u10 = frames[ip, j]
-            u11 = frames[ip, jp]
-            u01 = frames[i, jp]
-
-            o1 = np.vdot(u00, u10)
-            o2 = np.vdot(u10, u11)
-            o3 = np.vdot(u11, u01)
-            o4 = np.vdot(u01, u00)
-
-            n1 = abs(o1)
-            n2 = abs(o2)
-            n3 = abs(o3)
-            n4 = abs(o4)
-            if n1 < eps or n2 < eps or n3 < eps or n4 < eps:
-                continue
-
-            prod = (o1 / n1) * (o2 / n2) * (o3 / n3) * (o4 / n4)
-            flux[i, j] = float(np.angle(prod))
+    prod = np.ones((grid_n, grid_n), dtype=complex)
+    prod[valid] = (o1[valid] / n1[valid]) * (o2[valid] / n2[valid]) * (o3[valid] / n3[valid]) * (o4[valid] / n4[valid])
+    flux[valid] = np.angle(prod[valid])
 
     dk = 2.0 * np.pi / grid_n
     curvature = flux / (dk * dk)
@@ -357,17 +358,62 @@ def _compute_chern_number(payload: dict[str, np.ndarray]) -> float:
     return float(np.sum(payload["flux"]) / (2.0 * np.pi))
 
 
-def _plot_berry_curvature(
+def _compute_chern_number_fhs_honeycomb(
     solver,
+    num: int,
+    band_index: int,
+    eps: float = 1e-12,
+) -> float:
+    """FHS Chern number on native periodic BZ discretization.
+
+    Uses independent discretization ``num`` and gauge-invariant plaquette phases
+    from Fukui-Hatsugai-Suzuki (cond-mat/0503172).
+    """
+    kx = np.linspace(0.0, 2.0 * np.pi, num, endpoint=False)
+    ky = np.linspace(0.0, 2.0 * np.pi, num, endpoint=False)
+
+    probe = _band_eigenvector_from_core(solver, float(kx[0]), float(ky[0]), band_index)
+    vec_dim = probe.shape[0]
+    frames = np.empty((num, num, vec_dim), dtype=complex)
+    frames[0, 0, :] = probe
+    for i, kxi in enumerate(kx):
+        for j, kyj in enumerate(ky):
+            if i == 0 and j == 0:
+                continue
+            frames[i, j, :] = _band_eigenvector_from_core(solver, float(kxi), float(kyj), band_index)
+
+    frames_x = np.roll(frames, -1, axis=0)
+    frames_y = np.roll(frames, -1, axis=1)
+    frames_xy = np.roll(frames_x, -1, axis=1)
+
+    o1 = np.sum(np.conj(frames) * frames_x, axis=2)
+    o2 = np.sum(np.conj(frames_x) * frames_xy, axis=2)
+    o3 = np.sum(np.conj(frames_xy) * frames_y, axis=2)
+    o4 = np.sum(np.conj(frames_y) * frames, axis=2)
+
+    n1 = np.abs(o1)
+    n2 = np.abs(o2)
+    n3 = np.abs(o3)
+    n4 = np.abs(o4)
+    valid = (n1 >= eps) & (n2 >= eps) & (n3 >= eps) & (n4 >= eps)
+
+    prod = np.ones((num, num), dtype=complex)
+    prod[valid] = (o1[valid] / n1[valid]) * (o2[valid] / n2[valid]) * (o3[valid] / n3[valid]) * (o4[valid] / n4[valid])
+
+    flux = np.zeros((num, num), dtype=float)
+    flux[valid] = np.angle(prod[valid])
+    return float(np.sum(flux) / (2.0 * np.pi))
+
+
+def _plot_berry_curvature(
+    payload: dict[str, np.ndarray],
     nk: int,
     chern: float,
     band_index: int,
-    grid_n: int,
 ):
     bmat = np.array([[1.0, 0.0], [-0.5, np.sqrt(3.0) / 2.0]], dtype=float)
     inv_bmat = np.linalg.inv(bmat)
 
-    payload = _derive_berry_curvature_from_core(solver, grid_n=grid_n, band_index=band_index)
     curv_q = payload["curvature"]
 
     kx = np.linspace(-2.0 * np.pi, 2.0 * np.pi, nk)
@@ -489,7 +535,8 @@ st.latex(
     \end{aligned}
     """
 )
-st.caption("Current backend: MagnonLSWT from core.py.")
+_last_updated = datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+st.caption(f"Last updated: {_last_updated}")
 
 st.subheader("Model Parameters")
 
@@ -529,29 +576,34 @@ with fcol4:
     b_strength = st.number_input("field_strength", value=4.0, min_value=0.0, format="%.6f")
 
 st.subheader("Resolution")
-r1, r2, r3 = st.columns(3)
+r1, r2, r3, r4 = st.columns(4)
 with r1:
     path_pts = st.number_input("k-path points/segment", min_value=20, max_value=400, value=30, step=10)
 with r2:
     contour_nk = st.number_input("Band contour grid", min_value=20, max_value=401, value=30, step=10)
 with r3:
-    chern_grid = st.number_input("Berry curvature grid", min_value=60, max_value=301, value=120, step=10)
+    chern_grid = st.number_input("Berry curvature grid", min_value=60, max_value=301, value=60, step=10)
+with r4:
+    chern_num = st.number_input("BZ discretization for Chern number (FHS)", min_value=4, max_value=201, value=8, step=1)
 
-band_choice = st.selectbox(
-    "Band Selection for Contours",
-    options=["Lower positive band (index 0)", "Upper positive band (index 1)"],
-    index=1,
-)
+sel_col1, sel_col2 = st.columns(2)
+with sel_col1:
+    band_choice = st.selectbox(
+        "Band Selection for Contours",
+        options=["Lower positive band (index 0)", "Upper positive band (index 1)"],
+        index=1,
+    )
+with sel_col2:
+    cut_path_mode = st.selectbox(
+        "Band-cut path",
+        options=[
+            "K-G-M-K",
+            "K-G-M-G-M'-G-M''-G-K'",
+        ],
+        index=0,
+    )
+
 topo_band_index = 0 if band_choice.startswith("Lower") else 1
-
-cut_path_mode = st.selectbox(
-    "Band-cut path",
-    options=[
-        "K-G-M-K",
-        "K-G-M-G-M'-G-M''-G-K'",
-    ],
-    index=0,
-)
 
 if st.button("Run", type="primary"):
     direction = np.array([dir_x, dir_y, dir_z], dtype=float)
@@ -605,13 +657,16 @@ if st.button("Run", type="primary"):
                 grid_n=int(chern_grid),
                 band_index=topo_band_index,
             )
-            chern = _compute_chern_number(payload)
-            fig_berry, berry_data = _plot_berry_curvature(
+            chern = _compute_chern_number_fhs_honeycomb(
                 solver,
+                num=int(chern_num),
+                band_index=topo_band_index,
+            )
+            fig_berry, berry_data = _plot_berry_curvature(
+                payload,
                 int(contour_nk),
                 chern,
                 topo_band_index,
-                int(chern_grid),
             )
 
             pdf_cut = _figure_to_pdf_bytes(fig_cut)
