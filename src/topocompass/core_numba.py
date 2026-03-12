@@ -147,7 +147,7 @@ def _u1_overlap(ua: np.ndarray, ub: np.ndarray) -> complex:
     for n in range(ua.size):
         ov += np.conjugate(ua[n]) * ub[n]
     mag = np.abs(ov)
-    if mag < 1e-14:
+    if mag <= np.finfo(np.float64).tiny:
         return 1.0 + 0.0j
     return ov / mag
 
@@ -162,7 +162,7 @@ def _u1_overlap_eta(ua: np.ndarray, ub: np.ndarray) -> complex:
         - np.conjugate(ua[3]) * ub[3]
     )
     mag = np.abs(ov)
-    if mag < 1e-14:
+    if mag <= np.finfo(np.float64).tiny:
         return 1.0 + 0.0j
     return ov / mag
 
@@ -170,7 +170,7 @@ def _u1_overlap_eta(ua: np.ndarray, ub: np.ndarray) -> complex:
 def _u1_overlap_py(ua: np.ndarray, ub: np.ndarray) -> complex:
     ov = np.vdot(ua, ub)
     mag = np.abs(ov)
-    if mag < 1e-14:
+    if mag <= np.finfo(float).tiny:
         return 1.0 + 0.0j
     return ov / mag
 
@@ -183,7 +183,7 @@ def _u1_overlap_eta_py(ua: np.ndarray, ub: np.ndarray) -> complex:
         - np.conjugate(ua[3]) * ub[3]
     )
     mag = np.abs(ov)
-    if mag < 1e-14:
+    if mag <= np.finfo(float).tiny:
         return 1.0 + 0.0j
     return ov / mag
 
