@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
+from matplotlib.colors import TwoSlopeNorm
 from io import BytesIO, StringIO
 
 import sys
@@ -341,7 +342,13 @@ def _compute_chern_number(payload: dict[str, np.ndarray]) -> float:
     return float(np.sum(payload["flux"]) / (2.0 * np.pi))
 
 
-def _plot_berry_curvature(solver, nk: int, chern: float, band_index: int, grid_n: int):
+def _plot_berry_curvature(
+    solver,
+    nk: int,
+    chern: float,
+    band_index: int,
+    grid_n: int,
+):
     bmat = np.array([[1.0, 0.0], [-0.5, np.sqrt(3.0) / 2.0]], dtype=float)
     inv_bmat = np.linalg.inv(bmat)
 
@@ -380,6 +387,16 @@ def _plot_berry_curvature(solver, nk: int, chern: float, band_index: int, grid_n
     )
     bz_plot = bz_q @ inv_bmat.T
 
+    cmax = float(np.max(curv_plot))
+    cmin = float(np.min(curv_plot))
+    vmax = 0.8 * cmax if cmax > 0.0 else 1e-9
+    vmin = 0.2 * cmin if cmin < 0.0 else -1e-9
+    if not (vmin < 0.0 < vmax):
+        span = max(abs(cmin), abs(cmax), 1e-9)
+        vmin = -0.2 * span
+        vmax = 0.8 * span
+    norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
+
     fig, ax = plt.subplots(figsize=(4.0, 3.0), constrained_layout=True)
     im = ax.imshow(
         curv_plot,
@@ -387,8 +404,7 @@ def _plot_berry_curvature(solver, nk: int, chern: float, band_index: int, grid_n
         origin="lower",
         interpolation="nearest",
         cmap="RdBu_r",
-        vmin=-10.0,
-        vmax=10.0,
+        norm=norm,
         aspect="auto",
     )
     ax.plot(bz_plot[:, 0], bz_plot[:, 1], color="#e11d48", ls="--", lw=0.9)
@@ -508,11 +524,11 @@ with fcol4:
 st.subheader("Resolution")
 r1, r2, r3 = st.columns(3)
 with r1:
-    path_pts = st.number_input("k-path points/segment", min_value=20, max_value=400, value=90, step=10)
+    path_pts = st.number_input("k-path points/segment", min_value=20, max_value=400, value=30, step=10)
 with r2:
-    contour_nk = st.number_input("contour grid", min_value=31, max_value=401, value=121, step=10)
+    contour_nk = st.number_input("Band contour grid", min_value=20, max_value=401, value=30, step=10)
 with r3:
-    chern_grid = st.number_input("chern grid", min_value=21, max_value=301, value=81, step=10)
+    chern_grid = st.number_input("Berry curvature grid", min_value=20, max_value=301, value=80, step=10)
 
 band_choice = st.selectbox(
     "Band Selection for Contours",
@@ -532,9 +548,12 @@ cut_path_mode = st.selectbox(
 
 if st.button("Run", type="primary"):
     direction = np.array([dir_x, dir_y, dir_z], dtype=float)
-    if np.linalg.norm(direction) < 1e-12:
+    direction_norm = float(np.linalg.norm(direction))
+    if direction_norm < 1e-12:
         st.error("Field direction cannot be zero vector.")
         st.stop()
+    direction_unit = direction / direction_norm
+    field_vec = float(b_strength) * direction_unit
 
     pvals: dict[str, float | tuple[tuple[float, float, float], tuple[float, float, float]]] = {
         "S": float(spin_s),
@@ -553,13 +572,13 @@ if st.button("Run", type="primary"):
     }
     # Keep field direction and local axes consistent as requested.
     pvals["dirs"] = (
-        (float(direction[0]), float(direction[1]), float(direction[2])),
-        (float(direction[0]), float(direction[1]), float(direction[2])),
+        (float(direction_unit[0]), float(direction_unit[1]), float(direction_unit[2])),
+        (float(direction_unit[0]), float(direction_unit[1]), float(direction_unit[2])),
     )
 
     model = SpinExchangeModel(
         exchanges=pvals,  # type: ignore[arg-type]
-        magnetic_field_xyz=(float(direction[0]), float(direction[1]), float(direction[2])),
+        magnetic_field_xyz=(float(field_vec[0]), float(field_vec[1]), float(field_vec[2])),
         symmetry="C3i",
     )
     solver = MagnonLSWT(model)
@@ -568,6 +587,10 @@ if st.button("Run", type="primary"):
         with st.spinner("Computing band cut, contour, Berry curvature, and Chern number..."):
             s_vals, k_vals, s_nodes, labels = _build_kpath(int(path_pts), cut_path_mode)
             bands = solver.solve_band_structure(k_vals)
+            sorted_bands = np.sort(bands, axis=1)
+            min_gap = float(np.min(sorted_bands[:, 1] - sorted_bands[:, 0]))
+            gapless_warning = min_gap < 1e-2
+            chern_warning = min_gap < 1e-2
             fig_cut = _plot_band_cut(s_vals, bands, s_nodes, labels)
             fig_contour, contour_data = _plot_band_contour(solver, int(contour_nk), topo_band_index)
             payload = _derive_berry_curvature_from_core(
@@ -604,6 +627,8 @@ if st.button("Run", type="primary"):
     c1, c2, c3 = st.columns([1.2, 1.2, 1.2], vertical_alignment="top")
     with c1:
         st.pyplot(fig_cut, clear_figure=True)
+        if gapless_warning:
+            st.warning("Potentially gapless. Needs scaling analysis.")
         b11, b12 = st.columns(2)
         with b11:
             st.download_button(
@@ -625,6 +650,8 @@ if st.button("Run", type="primary"):
             )
     with c2:
         st.pyplot(fig_contour, clear_figure=True)
+        if gapless_warning:
+            st.warning("Potentially gapless. Needs scaling analysis.")
         b21, b22 = st.columns(2)
         with b21:
             st.download_button(
@@ -646,6 +673,8 @@ if st.button("Run", type="primary"):
             )
     with c3:
         st.pyplot(fig_berry, clear_figure=True)
+        if chern_warning:
+            st.warning("Don't trust! Chern may be unreliable when Δmin < 1e-2.")
         b31, b32 = st.columns(2)
         with b31:
             st.download_button(
