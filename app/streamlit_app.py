@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import sys
 from pathlib import Path
@@ -14,14 +14,6 @@ if str(_SRC) not in sys.path:
 
 from topocompass import SpinExchangeModel
 from topocompass.core import MagnonLSWT
-
-try:
-    from topocompass.core_numba import MagnonLSWTNumba as _PreferredSolver
-
-    _SOLVER_LABEL = "Numba-accelerated solver"
-except Exception:
-    _PreferredSolver = MagnonLSWT
-    _SOLVER_LABEL = "Base solver (Numba unavailable)"
 
 
 plt.rcParams.update(
@@ -40,13 +32,21 @@ plt.rcParams.update(
 )
 
 
-def _build_kpath(points_per_segment: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
+def _build_kpath(points_per_segment: int, path_mode: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
     labels_to_coords = {
         "K": np.array([2.0 * np.pi / 3.0, 2.0 * np.pi / 3.0, 0.0]),
         "G": np.array([0.0, 0.0, 0.0]),
         "M": np.array([np.pi, 0.0, 0.0]),
+        "Mp": np.array([0.0, np.pi, 0.0]),
+        "Mpp": np.array([-np.pi, np.pi, 0.0]),
+        "Kp": np.array([-2.0 * np.pi / 3.0, -2.0 * np.pi / 3.0, 0.0]),
     }
-    path = ["K", "G", "M", "K"]
+    if path_mode == "K-G-M-K":
+        path = ["K", "G", "M", "K"]
+    else:
+        # Extended high-symmetry route for C3-broken cases.
+        path = ["K", "G", "M", "G", "Mp", "G", "Mpp", "G", "Kp"]
+
     pts = np.asarray([labels_to_coords[label] for label in path], dtype=float)
 
     seg_lengths = np.linalg.norm(np.diff(pts, axis=0), axis=1)
@@ -66,7 +66,20 @@ def _build_kpath(points_per_segment: int) -> tuple[np.ndarray, np.ndarray, np.nd
 
     s_vals.append(1.0)
     k_vals.append(pts[-1])
-    return np.asarray(s_vals), np.asarray(k_vals), s_nodes, path
+    display_labels = ["M'" if p == "Mp" else "M''" if p == "Mpp" else "K'" if p == "Kp" else p for p in path]
+    return np.asarray(s_vals), np.asarray(k_vals), s_nodes, display_labels
+
+
+def _matrix_to_csv_bytes(data: np.ndarray, header: str) -> bytes:
+    buf = StringIO()
+    np.savetxt(buf, data, delimiter=",", header=header, comments="")
+    return buf.getvalue().encode("utf-8")
+
+
+def _grid_to_csv_bytes(kx: np.ndarray, ky: np.ndarray, z: np.ndarray, z_name: str) -> bytes:
+    kx_mesh, ky_mesh = np.meshgrid(kx, ky, indexing="xy")
+    flat = np.column_stack([kx_mesh.ravel(), ky_mesh.ravel(), z.ravel()])
+    return _matrix_to_csv_bytes(flat, f"kx,ky,{z_name}")
 
 
 def _figure_to_pdf_bytes(fig: plt.Figure) -> bytes:
@@ -181,6 +194,7 @@ def _plot_band_cut(s_vals: np.ndarray, bands: np.ndarray, s_nodes: np.ndarray, l
     ax.set_ylim(y_min - pad, y_max + pad)
     ax.set_xticks(s_nodes)
     ax.set_xticklabels(labels)
+    ax.set_xlabel(r"$k$")
     ax.set_ylabel(r"$E(k)$")
     ax.set_title("Band Cut")
     if gap_text:
@@ -201,7 +215,7 @@ def _plot_band_cut(s_vals: np.ndarray, bands: np.ndarray, s_nodes: np.ndarray, l
     return fig
 
 
-def _plot_band_contour(solver, nk: int):
+def _plot_band_contour(solver, nk: int, band_index: int):
     bmat = np.array([[1.0, 0.0], [-0.5, np.sqrt(3.0) / 2.0]], dtype=float)
     inv_bmat = np.linalg.inv(bmat)
 
@@ -212,12 +226,25 @@ def _plot_band_contour(solver, nk: int):
         for j, k2 in enumerate(ky):
             q = bmat @ np.array([k1, k2], dtype=float)
             evals, _ = solver.paraunitary_diagonalize(solver.build_magnon_bilinear((q[0], q[1], 0.0)))
-            z[j, i] = float(np.sort(evals)[0])
+            evals = np.sort(evals)
+            if band_index < 0 or band_index >= len(evals):
+                raise ValueError("band_index out of range for contour plot")
+            z[j, i] = float(evals[band_index])
 
     bz_q = (2.0 * np.pi / 3.0) * np.array(
         [[1, 1], [2, -1], [1, -2], [-1, -1], [-2, 1], [-1, 2], [1, 1]], dtype=float
     )
     bz_plot = bz_q @ inv_bmat.T
+
+    hs_q = {
+        "G": np.array([0.0, 0.0], dtype=float),
+        "K": np.array([2.0 * np.pi / 3.0, 2.0 * np.pi / 3.0], dtype=float),
+        "K'": np.array([-2.0 * np.pi / 3.0, -2.0 * np.pi / 3.0], dtype=float),
+        "M": np.array([np.pi, 0.0], dtype=float),
+        "M'": np.array([0.0, np.pi], dtype=float),
+        "M''": np.array([-np.pi, np.pi], dtype=float),
+    }
+    hs_plot = {label: inv_bmat @ q for label, q in hs_q.items()}
 
     fig, ax = plt.subplots(figsize=(4.0, 3.0), constrained_layout=True)
     im = ax.imshow(
@@ -229,22 +256,96 @@ def _plot_band_contour(solver, nk: int):
         aspect="auto",
     )
     ax.plot(bz_plot[:, 0], bz_plot[:, 1], color="#e11d48", ls="--", lw=0.9)
+    marker_color = "#67e8f9"
+    for label, xy in hs_plot.items():
+        ax.scatter(xy[0], xy[1], s=22, c=marker_color, edgecolors="#ecfeff", linewidths=0.4, zorder=3)
+        ax.text(
+            float(xy[0]),
+            float(xy[1]),
+            label,
+            color=marker_color,
+            fontsize=9,
+            va="bottom",
+            ha="left",
+            bbox=dict(boxstyle="round,pad=0.12", facecolor="black", alpha=0.55, edgecolor="none"),
+        )
     ax.set_xlabel(r"$k_x$")
     ax.set_ylabel(r"$k_y$")
-    ax.set_title("Band Contour (Lower)")
+    band_label = "Lower" if band_index == 0 else "Upper"
+    ax.set_title(f"Band Contour ({band_label})")
     fig.colorbar(im, ax=ax, label=r"$E(k)$")
-    return fig
+    return fig, {"kx": kx, "ky": ky, "energy": z}
 
 
-def _plot_berry_curvature(solver, nk: int, chern: float, band_index: int):
+def _band_eigenvector_from_core(solver, kx: float, ky: float, band_index: int, atol: float = 1e-9) -> np.ndarray:
+    metric_r = solver.build_magnon_bilinear((float(kx), float(ky), 0.0))
+    vals, vecs = np.linalg.eig(metric_r)
+    order = np.argsort(np.real(vals))
+    vals = np.real(vals[order])
+    vecs = vecs[:, order]
+
+    pos = np.where(vals > atol)[0]
+    if len(pos) < 2:
+        raise RuntimeError("Could not extract two positive magnon modes.")
+    if band_index < 0 or band_index > 1:
+        raise ValueError("band_index must be 0 or 1.")
+
+    vec = vecs[:, pos[band_index]]
+    nrm = float(np.linalg.norm(vec))
+    if nrm < atol:
+        raise RuntimeError("Encountered near-zero eigenvector norm.")
+    return vec / nrm
+
+
+def _derive_berry_curvature_from_core(solver, grid_n: int, band_index: int, eps: float = 1e-12) -> dict[str, np.ndarray]:
+    kx = np.linspace(0.0, 2.0 * np.pi, grid_n, endpoint=False)
+    ky = np.linspace(0.0, 2.0 * np.pi, grid_n, endpoint=False)
+
+    frames = np.empty((grid_n, grid_n), dtype=object)
+    for i, kxi in enumerate(kx):
+        for j, kyj in enumerate(ky):
+            frames[i, j] = _band_eigenvector_from_core(solver, float(kxi), float(kyj), band_index)
+
+    flux = np.zeros((grid_n, grid_n), dtype=float)
+    for i in range(grid_n):
+        ip = (i + 1) % grid_n
+        for j in range(grid_n):
+            jp = (j + 1) % grid_n
+
+            u00 = frames[i, j]
+            u10 = frames[ip, j]
+            u11 = frames[ip, jp]
+            u01 = frames[i, jp]
+
+            o1 = np.vdot(u00, u10)
+            o2 = np.vdot(u10, u11)
+            o3 = np.vdot(u11, u01)
+            o4 = np.vdot(u01, u00)
+
+            n1 = abs(o1)
+            n2 = abs(o2)
+            n3 = abs(o3)
+            n4 = abs(o4)
+            if n1 < eps or n2 < eps or n3 < eps or n4 < eps:
+                continue
+
+            prod = (o1 / n1) * (o2 / n2) * (o3 / n3) * (o4 / n4)
+            flux[i, j] = float(np.angle(prod))
+
+    dk = 2.0 * np.pi / grid_n
+    curvature = flux / (dk * dk)
+    return {"curvature": curvature, "flux": flux, "kx": kx, "ky": ky}
+
+
+def _compute_chern_number(payload: dict[str, np.ndarray]) -> float:
+    return float(np.sum(payload["flux"]) / (2.0 * np.pi))
+
+
+def _plot_berry_curvature(solver, nk: int, chern: float, band_index: int, grid_n: int):
     bmat = np.array([[1.0, 0.0], [-0.5, np.sqrt(3.0) / 2.0]], dtype=float)
     inv_bmat = np.linalg.inv(bmat)
 
-    payload = solver.derive_berry_curvature(
-        grid_n=nk,
-        band_index=band_index,
-        method="paraunitary",
-    )
+    payload = _derive_berry_curvature_from_core(solver, grid_n=grid_n, band_index=band_index)
     curv_q = payload["curvature"]
 
     kx = np.linspace(-2.0 * np.pi, 2.0 * np.pi, nk)
@@ -256,7 +357,6 @@ def _plot_berry_curvature(solver, nk: int, chern: float, band_index: int):
             qx = (q[0] % (2.0 * np.pi)) / (2.0 * np.pi) * curv_q.shape[0]
             qy = (q[1] % (2.0 * np.pi)) / (2.0 * np.pi) * curv_q.shape[1]
 
-            # Periodic bilinear remap on the same selected band.
             i0 = int(np.floor(qx)) % curv_q.shape[0]
             j0 = int(np.floor(qy)) % curv_q.shape[1]
             i1 = (i0 + 1) % curv_q.shape[0]
@@ -307,7 +407,7 @@ def _plot_berry_curvature(solver, nk: int, chern: float, band_index: int):
         bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.75, edgecolor="white"),
     )
     fig.colorbar(im, ax=ax, label=r"$\Omega(k)$")
-    return fig
+    return fig, {"kx": kx, "ky": ky, "curvature": curv_plot}
 
 
 st.set_page_config(page_title="Spin Wave Explorer", layout="wide")
@@ -351,21 +451,22 @@ st.markdown(
 st.latex(
     r"""
     \begin{aligned}
-    H = &\sum_{\langle ij \rangle_{\gamma}} \Big[
+    H =\;& \sum_{\langle ij \rangle_{\gamma}} \Big[
     J\,\mathbf{S}_i \cdot \mathbf{S}_j
     + K\,S_i^{\gamma} S_j^{\gamma}
     + \Gamma\,(S_i^{\alpha}S_j^{\beta}+S_i^{\beta}S_j^{\alpha})
-    + \Gamma'\,(S_i^{\gamma}S_j^{\alpha}+S_i^{\alpha}S_j^{\gamma}+S_i^{\gamma}S_j^{\beta}+S_i^{\beta}S_j^{\gamma})
+    + \Gamma'\,(S_i^{\gamma}S_j^{\alpha}+S_i^{\alpha}S_j^{\gamma}
+    +S_i^{\gamma}S_j^{\beta}+S_i^{\beta}S_j^{\gamma})
     \Big] \\
-    &+ J_2 \sum_{\langle\langle ij \rangle\rangle} \mathbf{S}_i \cdot \mathbf{S}_j
-    + J_3 \sum_{\langle\langle\langle ij \rangle\rangle\rangle} \mathbf{S}_i \cdot \mathbf{S}_j
-    + D \sum_{\langle ij \rangle} (\mathbf{S}_i \times \mathbf{S}_j)_z
-    + A \sum_i (S_i^z)^2
+    &+ J_2 \sum_{\langle\!\langle ij \rangle\!\rangle} \mathbf{S}_i \cdot \mathbf{S}_j
+    + D \sum_{\langle\!\langle ij \rangle\!\rangle} \hat{\mathbf D}\cdot(\mathbf{S}_i \times \mathbf{S}_j)
+    + J_3 \sum_{\langle\!\langle\!\langle ij \rangle\!\rangle\!\rangle} \mathbf{S}_i \cdot \mathbf{S}_j \\
+    &+ A \sum_i \left(S_i^x S_i^y + S_i^y S_i^x\right)
     - h \sum_i \hat{\mathbf{n}} \cdot \mathbf{S}_i .
     \end{aligned}
     """
 )
-st.caption(f"Current backend: {_SOLVER_LABEL}.")
+st.caption("Current backend: MagnonLSWT from core.py.")
 
 st.subheader("Model Parameters")
 
@@ -414,11 +515,20 @@ with r3:
     chern_grid = st.number_input("chern grid", min_value=21, max_value=301, value=81, step=10)
 
 band_choice = st.selectbox(
-    "Topology band",
+    "Band Selection for Contours",
     options=["Lower positive band (index 0)", "Upper positive band (index 1)"],
     index=1,
 )
 topo_band_index = 0 if band_choice.startswith("Lower") else 1
+
+cut_path_mode = st.selectbox(
+    "Band-cut path",
+    options=[
+        "K-G-M-K",
+        "K-G-M-G-M'-G-M''-G-K'",
+    ],
+    index=0,
+)
 
 if st.button("Run", type="primary"):
     direction = np.array([dir_x, dir_y, dir_z], dtype=float)
@@ -452,55 +562,108 @@ if st.button("Run", type="primary"):
         magnetic_field_xyz=(float(direction[0]), float(direction[1]), float(direction[2])),
         symmetry="C3i",
     )
-    solver = _PreferredSolver(model)
+    solver = MagnonLSWT(model)
 
-    with st.spinner("Computing band cut, contour, Berry curvature, and Chern number..."):
-        s_vals, k_vals, s_nodes, labels = _build_kpath(int(path_pts))
-        bands = solver.solve_band_structure(k_vals)
-        fig_cut = _plot_band_cut(s_vals, bands, s_nodes, labels)
-        fig_contour = _plot_band_contour(solver, int(contour_nk))
-        payload = solver.derive_berry_curvature(
-            grid_n=int(chern_grid),
-            band_index=topo_band_index,
-            method="paraunitary",
+    try:
+        with st.spinner("Computing band cut, contour, Berry curvature, and Chern number..."):
+            s_vals, k_vals, s_nodes, labels = _build_kpath(int(path_pts), cut_path_mode)
+            bands = solver.solve_band_structure(k_vals)
+            fig_cut = _plot_band_cut(s_vals, bands, s_nodes, labels)
+            fig_contour, contour_data = _plot_band_contour(solver, int(contour_nk), topo_band_index)
+            payload = _derive_berry_curvature_from_core(
+                solver,
+                grid_n=int(chern_grid),
+                band_index=topo_band_index,
+            )
+            chern = _compute_chern_number(payload)
+            fig_berry, berry_data = _plot_berry_curvature(
+                solver,
+                int(contour_nk),
+                chern,
+                topo_band_index,
+                int(chern_grid),
+            )
+
+            pdf_cut = _figure_to_pdf_bytes(fig_cut)
+            pdf_contour = _figure_to_pdf_bytes(fig_contour)
+            pdf_berry = _figure_to_pdf_bytes(fig_berry)
+
+            cut_header = "s,kx,ky,band0,band1"
+            cut_data = np.column_stack([s_vals, k_vals[:, 0], k_vals[:, 1], bands[:, 0], bands[:, 1]])
+            csv_cut = _matrix_to_csv_bytes(cut_data, cut_header)
+            csv_contour = _grid_to_csv_bytes(contour_data["kx"], contour_data["ky"], contour_data["energy"], "energy")
+            csv_berry = _grid_to_csv_bytes(berry_data["kx"], berry_data["ky"], berry_data["curvature"], "curvature")
+    except RuntimeError as exc:
+        st.error("Solver failed for this parameter set.")
+        st.caption(str(exc))
+        st.info(
+            "Try increasing field_strength, changing exchange parameters, or reducing contour/chern grid to scan a nearby stable region."
         )
-        chern = solver.compute_chern_number(payload)
-        fig_berry = _plot_berry_curvature(solver, int(contour_nk), chern, topo_band_index)
-
-        pdf_cut = _figure_to_pdf_bytes(fig_cut)
-        pdf_contour = _figure_to_pdf_bytes(fig_contour)
-        pdf_berry = _figure_to_pdf_bytes(fig_berry)
+        st.stop()
 
     c1, c2, c3 = st.columns([1.2, 1.2, 1.2], vertical_alignment="top")
     with c1:
         st.pyplot(fig_cut, clear_figure=True)
-        st.download_button(
-            "Download",
-            data=pdf_cut,
-            file_name="band_cut.pdf",
-            mime="application/pdf",
-            key="download_band_cut_pdf",
-            use_container_width=True,
-        )
+        b11, b12 = st.columns(2)
+        with b11:
+            st.download_button(
+                "Save Figure",
+                data=pdf_cut,
+                file_name="band_cut.pdf",
+                mime="application/pdf",
+                key="download_band_cut_pdf",
+                use_container_width=True,
+            )
+        with b12:
+            st.download_button(
+                "Save Data",
+                data=csv_cut,
+                file_name="band_cut.csv",
+                mime="text/csv",
+                key="download_band_cut_csv",
+                use_container_width=True,
+            )
     with c2:
         st.pyplot(fig_contour, clear_figure=True)
-        st.download_button(
-            "Download",
-            data=pdf_contour,
-            file_name="band_contour.pdf",
-            mime="application/pdf",
-            key="download_band_contour_pdf",
-            use_container_width=True,
-        )
+        b21, b22 = st.columns(2)
+        with b21:
+            st.download_button(
+                "Save Figure",
+                data=pdf_contour,
+                file_name="band_contour.pdf",
+                mime="application/pdf",
+                key="download_band_contour_pdf",
+                use_container_width=True,
+            )
+        with b22:
+            st.download_button(
+                "Save Data",
+                data=csv_contour,
+                file_name=f"band_contour_band_{topo_band_index}.csv",
+                mime="text/csv",
+                key="download_band_contour_csv",
+                use_container_width=True,
+            )
     with c3:
         st.pyplot(fig_berry, clear_figure=True)
-        st.download_button(
-            "Download",
-            data=pdf_berry,
-            file_name="berry_curvature_lower.pdf",
-            mime="application/pdf",
-            key="download_berry_curvature_pdf",
-            use_container_width=True,
-        )
+        b31, b32 = st.columns(2)
+        with b31:
+            st.download_button(
+                "Save Figure",
+                data=pdf_berry,
+                file_name=f"berry_curvature_band_{topo_band_index}.pdf",
+                mime="application/pdf",
+                key="download_berry_curvature_pdf",
+                use_container_width=True,
+            )
+        with b32:
+            st.download_button(
+                "Save Data",
+                data=csv_berry,
+                file_name=f"berry_curvature_band_{topo_band_index}.csv",
+                mime="text/csv",
+                key="download_berry_curvature_csv",
+                use_container_width=True,
+            )
 
 st.caption("\u00a9 Shi Feng, TU Munich")

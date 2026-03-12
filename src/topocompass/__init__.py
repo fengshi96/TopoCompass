@@ -1,10 +1,12 @@
 """Topological magnon bilinear generation and solving toolkit."""
 
-from .core import generate_bilinears, solve_magnon_bilinears
 from .model import SpinExchangeModel
+from .core import MagnonLSWT, build_magnon_bilinear, paraunitary_diagonalize, solve_band_structure
 
 __all__ = [
     "SpinExchangeModel",
-    "generate_bilinears",
-    "solve_magnon_bilinears",
+    "MagnonLSWT",
+    "build_magnon_bilinear",
+    "paraunitary_diagonalize",
+    "solve_band_structure",
 ]
