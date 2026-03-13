@@ -255,6 +255,7 @@ def _plot_band_cut_scaled(
     center = 0.5 * (float(bands_sorted[min_idx, 0]) + float(bands_sorted[min_idx, 1]))
     half_span = float(np.max(np.abs(bands - center)))
     y_half = max(half_span / max(zoom, 1e-6), 1e-6)
+    y_half *= 1.04
     ax.set_ylim(center - y_half, center + y_half)
     return fig
 
