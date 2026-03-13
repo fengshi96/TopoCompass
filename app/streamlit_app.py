@@ -987,104 +987,102 @@ st.caption(
     r"The field magnitude is controlled by `h = field_strength`, i.e. $\mathbf h = h\,\hat{\mathbf n}$"
 )
 _init_direction_state()
-fd_left, fd_right = st.columns([3, 1])
-with fd_left:
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        st.number_input(
-            "dir_x",
-            key="dir_x_num",
-            format="%.6f",
-            on_change=_on_dir_number_change,
-            args=("x",),
-        )
-        st.slider(
-            "dir_x slider",
-            min_value=-3.0,
-            max_value=3.0,
-            step=0.01,
-            key="dir_x_sld",
-            on_change=_on_dir_slider_change,
-            args=("x",),
-            label_visibility="collapsed",
-        )
-    with d2:
-        st.number_input(
-            "dir_y",
-            key="dir_y_num",
-            format="%.6f",
-            on_change=_on_dir_number_change,
-            args=("y",),
-        )
-        st.slider(
-            "dir_y slider",
-            min_value=-3.0,
-            max_value=3.0,
-            step=0.01,
-            key="dir_y_sld",
-            on_change=_on_dir_slider_change,
-            args=("y",),
-            label_visibility="collapsed",
-        )
-    with d3:
-        st.number_input(
-            "dir_z",
-            key="dir_z_num",
-            format="%.6f",
-            on_change=_on_dir_number_change,
-            args=("z",),
-        )
-        st.slider(
-            "dir_z slider",
-            min_value=-3.0,
-            max_value=3.0,
-            step=0.01,
-            key="dir_z_sld",
-            on_change=_on_dir_slider_change,
-            args=("z",),
-            label_visibility="collapsed",
-        )
-
-    a1, a2 = st.columns(2)
-    with a1:
-        st.number_input(
-            "theta (deg)",
-            min_value=0.0,
-            max_value=180.0,
-            key="theta_num",
-            format="%.6f",
-            on_change=_on_theta_number_change,
-        )
-        st.slider(
-            "theta slider",
-            min_value=0.0,
-            max_value=180.0,
-            step=0.1,
-            key="theta_sld",
-            on_change=_on_theta_slider_change,
-            label_visibility="collapsed",
-        )
-    with a2:
-        st.number_input(
-            "phi (deg)",
-            min_value=-180.0,
-            max_value=180.0,
-            key="phi_num",
-            format="%.6f",
-            on_change=_on_phi_number_change,
-        )
-        st.slider(
-            "phi slider",
-            min_value=-180.0,
-            max_value=180.0,
-            step=0.1,
-            key="phi_sld",
-            on_change=_on_phi_slider_change,
-            label_visibility="collapsed",
-        )
-with fd_right:
-    # Vertical spacer so field_strength is centered between the two left rows.
-    st.markdown("<div style='height: 3.2rem;'></div>", unsafe_allow_html=True)
+fd_cols = st.columns([1, 1, 1, 0.06, 1, 1, 0.06, 1])
+with fd_cols[0]:
+    st.number_input(
+        r"$d_x$",
+        key="dir_x_num",
+        format="%.6f",
+        on_change=_on_dir_number_change,
+        args=("x",),
+    )
+    st.slider(
+        "dir_x slider",
+        min_value=-3.0,
+        max_value=3.0,
+        step=0.01,
+        key="dir_x_sld",
+        on_change=_on_dir_slider_change,
+        args=("x",),
+        label_visibility="collapsed",
+    )
+with fd_cols[1]:
+    st.number_input(
+        r"$d_y$",
+        key="dir_y_num",
+        format="%.6f",
+        on_change=_on_dir_number_change,
+        args=("y",),
+    )
+    st.slider(
+        "dir_y slider",
+        min_value=-3.0,
+        max_value=3.0,
+        step=0.01,
+        key="dir_y_sld",
+        on_change=_on_dir_slider_change,
+        args=("y",),
+        label_visibility="collapsed",
+    )
+with fd_cols[2]:
+    st.number_input(
+        r"$d_z$",
+        key="dir_z_num",
+        format="%.6f",
+        on_change=_on_dir_number_change,
+        args=("z",),
+    )
+    st.slider(
+        "dir_z slider",
+        min_value=-3.0,
+        max_value=3.0,
+        step=0.01,
+        key="dir_z_sld",
+        on_change=_on_dir_slider_change,
+        args=("z",),
+        label_visibility="collapsed",
+    )
+with fd_cols[3]:
+    st.markdown("<div style='height: 0.7rem; border-left: 1px solid #6b7280; min-height: 6.2rem; margin: 0 auto;'></div>", unsafe_allow_html=True)
+with fd_cols[4]:
+    st.number_input(
+        r"$\theta$ (deg)",
+        min_value=0.0,
+        max_value=180.0,
+        key="theta_num",
+        format="%.6f",
+        on_change=_on_theta_number_change,
+    )
+    st.slider(
+        "theta slider",
+        min_value=0.0,
+        max_value=180.0,
+        step=0.1,
+        key="theta_sld",
+        on_change=_on_theta_slider_change,
+        label_visibility="collapsed",
+    )
+with fd_cols[5]:
+    st.number_input(
+        r"$\phi$ (deg)",
+        min_value=-180.0,
+        max_value=180.0,
+        key="phi_num",
+        format="%.6f",
+        on_change=_on_phi_number_change,
+    )
+    st.slider(
+        "phi slider",
+        min_value=-180.0,
+        max_value=180.0,
+        step=0.1,
+        key="phi_sld",
+        on_change=_on_phi_slider_change,
+        label_visibility="collapsed",
+    )
+with fd_cols[6]:
+    st.markdown("<div style='height: 0.7rem; border-left: 1px solid #6b7280; min-height: 6.2rem; margin: 0 auto;'></div>", unsafe_allow_html=True)
+with fd_cols[7]:
     b_strength = _number_with_slider(
         "field_strength",
         "b_strength",
@@ -1097,7 +1095,6 @@ with fd_right:
         number_min=0.0,
         number_max=50.0,
     )
-    st.markdown("<div style='height: 3.2rem;'></div>", unsafe_allow_html=True)
 
 dir_x = float(st.session_state["dir_x_num"])
 dir_y = float(st.session_state["dir_y_num"])
