@@ -621,7 +621,7 @@ def _plot_berry_curvature_from_data(
 
 def _scale_from_center_slider(ctrl: float) -> float:
     """Map centered slider control in [-1, 1] to zoom scale, with 0 -> 1."""
-    return float(10.0 ** ctrl)
+    return float(10.0 ** (ctrl))
 
 
 def _format_sci_1sig(x: float, _pos: int) -> str:
@@ -888,6 +888,7 @@ st.markdown(
         font-size: 1.2rem !important;
         line-height: 1.55 !important;
     }
+
     </style>
     <p class="app-lead">
     Automated generator and solver of magnon bilinears for generic spin-orbit coupled honeycomb Mott insulators
@@ -1250,7 +1251,7 @@ if "last_results" in st.session_state:
         )
         st.pyplot(fig_cut, clear_figure=True)
         st.slider(
-            "Band cut y-scale (center=1)",
+            "Band cut y-scale",
             min_value=-1.0,
             max_value=1.0,
             value=0.0,
@@ -1290,7 +1291,7 @@ if "last_results" in st.session_state:
         )
         st.pyplot(fig_contour, clear_figure=True)
         st.slider(
-            "Band contour color scale (center=1)",
+            "Band contour color scale",
             min_value=-1.0,
             max_value=1.0,
             value=0.0,
@@ -1331,7 +1332,7 @@ if "last_results" in st.session_state:
         )
         st.pyplot(fig_berry, clear_figure=True)
         st.slider(
-            "Berry color scale (center=1)",
+            "Berry color scale",
             min_value=-1.0,
             max_value=1.0,
             value=0.0,
