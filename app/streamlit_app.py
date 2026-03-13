@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
+from matplotlib import ticker
 from io import BytesIO, StringIO
 from datetime import datetime
 
@@ -495,7 +496,11 @@ def _plot_berry_curvature(
         fontsize=10,
         bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.75, edgecolor="white"),
     )
-    fig.colorbar(im, ax=ax, label=r"$\Omega(k)$")
+    cbar = fig.colorbar(im, ax=ax, label=r"$\Omega(k)$")
+    ticks, exponent, scale = _berry_integer_ticks_and_exponent(5.0)
+    cbar.set_ticks(ticks)
+    cbar.ax.yaxis.set_major_formatter(ticker.FuncFormatter(_format_int_scaled(scale)))
+    cbar.ax.set_title(rf"$\times 10^{{{exponent}}}$", pad=6)
     return fig, {"kx": kx, "ky": ky, "curvature": curv_plot}
 
 
@@ -606,13 +611,213 @@ def _plot_berry_curvature_from_data(
         fontsize=10,
         bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.75, edgecolor="white"),
     )
-    fig.colorbar(im, ax=ax, label=r"$\Omega(k)$")
+    cbar = fig.colorbar(im, ax=ax, label=r"$\Omega(k)$")
+    ticks, exponent, scale = _berry_integer_ticks_and_exponent(half)
+    cbar.set_ticks(ticks)
+    cbar.ax.yaxis.set_major_formatter(ticker.FuncFormatter(_format_int_scaled(scale)))
+    cbar.ax.set_title(rf"$\times 10^{{{exponent}}}$", pad=6)
     return fig
 
 
 def _scale_from_center_slider(ctrl: float) -> float:
     """Map centered slider control in [-1, 1] to zoom scale, with 0 -> 1."""
     return float(10.0 ** ctrl)
+
+
+def _format_sci_1sig(x: float, _pos: int) -> str:
+    """Format ticks as scientific notation with 1 significant figure."""
+    x = float(x)
+    if np.isclose(x, 0.0):
+        return r"$0$"
+
+    exponent = int(np.floor(np.log10(abs(x))))
+    mantissa = float(np.round(x / (10.0 ** exponent), 0))
+    if abs(mantissa) >= 10.0:
+        mantissa /= 10.0
+        exponent += 1
+
+    if np.isclose(mantissa, 0.0):
+        return r"$0$"
+    return rf"${int(mantissa)}\times10^{{{exponent}}}$"
+
+
+def _berry_integer_ticks_and_exponent(vmax: float) -> tuple[np.ndarray, int, float]:
+    vmax = float(abs(vmax))
+    if vmax < 1e-12:
+        return np.array([-1.0, 0.0, 1.0]), 0, 1.0
+
+    exponent = int(np.floor(np.log10(vmax)))
+    scale = float(10.0 ** exponent)
+    max_int = int(np.floor(vmax / scale))
+    max_int = max(1, min(max_int, 9))
+    ticks = np.arange(-max_int, max_int + 1, dtype=float) * scale
+    return ticks, exponent, scale
+
+
+def _format_int_scaled(scale: float):
+    def _fmt(x: float, _pos: int) -> str:
+        return f"{int(np.round(float(x) / scale))}"
+
+    return _fmt
+
+
+def _sync_slider_from_number(num_key: str, sld_key: str, smin: float, smax: float) -> None:
+    val = float(st.session_state[num_key])
+    st.session_state[sld_key] = float(np.clip(val, smin, smax))
+
+
+def _sync_number_from_slider(num_key: str, sld_key: str) -> None:
+    st.session_state[num_key] = float(st.session_state[sld_key])
+
+
+def _number_with_slider(
+    label: str,
+    base_key: str,
+    default: float,
+    slider_min: float,
+    slider_max: float,
+    number_step: float = 0.01,
+    number_format: str = "%.6f",
+    slider_step: float = 0.01,
+    number_min: float | None = None,
+    number_max: float | None = None,
+) -> float:
+    num_key = f"{base_key}_num"
+    sld_key = f"{base_key}_sld"
+
+    if num_key not in st.session_state:
+        st.session_state[num_key] = float(default)
+    if sld_key not in st.session_state:
+        st.session_state[sld_key] = float(np.clip(default, slider_min, slider_max))
+
+    st.number_input(
+        label,
+        min_value=number_min,
+        max_value=number_max,
+        step=float(number_step),
+        format=number_format,
+        key=num_key,
+        on_change=_sync_slider_from_number,
+        args=(num_key, sld_key, float(slider_min), float(slider_max)),
+    )
+    st.slider(
+        f"{label} slider",
+        min_value=float(slider_min),
+        max_value=float(slider_max),
+        step=float(slider_step),
+        key=sld_key,
+        on_change=_sync_number_from_slider,
+        args=(num_key, sld_key),
+        label_visibility="collapsed",
+    )
+    return float(st.session_state[num_key])
+
+
+def _angles_from_xyz_deg(x: float, y: float, z: float) -> tuple[float, float]:
+    vec = np.array([x, y, z], dtype=float)
+    nrm = float(np.linalg.norm(vec))
+    if nrm < 1e-12:
+        return 54.7356103172, 45.0
+
+    u = vec / nrm
+    theta = float(np.degrees(np.arccos(np.clip(u[2], -1.0, 1.0))))
+    phi = float(np.degrees(np.arctan2(u[1], u[0])))
+    return theta, phi
+
+
+def _xyz_from_angles_deg(theta_deg: float, phi_deg: float) -> tuple[float, float, float]:
+    th = np.deg2rad(float(theta_deg))
+    ph = np.deg2rad(float(phi_deg))
+    x = float(np.sin(th) * np.cos(ph))
+    y = float(np.sin(th) * np.sin(ph))
+    z = float(np.cos(th))
+    return x, y, z
+
+
+def _set_dir_angles_from_xyz_state() -> None:
+    x = float(st.session_state["dir_x_num"])
+    y = float(st.session_state["dir_y_num"])
+    z = float(st.session_state["dir_z_num"])
+    theta, phi = _angles_from_xyz_deg(x, y, z)
+    st.session_state["theta_num"] = float(np.clip(theta, 0.0, 180.0))
+    st.session_state["theta_sld"] = float(np.clip(theta, 0.0, 180.0))
+    st.session_state["phi_num"] = float(np.clip(phi, -180.0, 180.0))
+    st.session_state["phi_sld"] = float(np.clip(phi, -180.0, 180.0))
+
+
+def _set_xyz_from_dir_angles_state() -> None:
+    theta = float(st.session_state["theta_num"])
+    phi = float(st.session_state["phi_num"])
+    x, y, z = _xyz_from_angles_deg(theta, phi)
+    st.session_state["dir_x_num"] = x
+    st.session_state["dir_y_num"] = y
+    st.session_state["dir_z_num"] = z
+    st.session_state["dir_x_sld"] = float(np.clip(x, -3.0, 3.0))
+    st.session_state["dir_y_sld"] = float(np.clip(y, -3.0, 3.0))
+    st.session_state["dir_z_sld"] = float(np.clip(z, -3.0, 3.0))
+
+
+def _on_dir_number_change(axis: str) -> None:
+    num_key = f"dir_{axis}_num"
+    sld_key = f"dir_{axis}_sld"
+    st.session_state[sld_key] = float(np.clip(st.session_state[num_key], -3.0, 3.0))
+    _set_dir_angles_from_xyz_state()
+
+
+def _on_dir_slider_change(axis: str) -> None:
+    num_key = f"dir_{axis}_num"
+    sld_key = f"dir_{axis}_sld"
+    st.session_state[num_key] = float(st.session_state[sld_key])
+    _set_dir_angles_from_xyz_state()
+
+
+def _on_theta_number_change() -> None:
+    st.session_state["theta_sld"] = float(np.clip(st.session_state["theta_num"], 0.0, 180.0))
+    _set_xyz_from_dir_angles_state()
+
+
+def _on_theta_slider_change() -> None:
+    st.session_state["theta_num"] = float(st.session_state["theta_sld"])
+    _set_xyz_from_dir_angles_state()
+
+
+def _on_phi_number_change() -> None:
+    st.session_state["phi_sld"] = float(np.clip(st.session_state["phi_num"], -180.0, 180.0))
+    _set_xyz_from_dir_angles_state()
+
+
+def _on_phi_slider_change() -> None:
+    st.session_state["phi_num"] = float(st.session_state["phi_sld"])
+    _set_xyz_from_dir_angles_state()
+
+
+def _init_direction_state() -> None:
+    if "dir_x_num" not in st.session_state:
+        st.session_state["dir_x_num"] = 1.0
+    if "dir_y_num" not in st.session_state:
+        st.session_state["dir_y_num"] = 1.0
+    if "dir_z_num" not in st.session_state:
+        st.session_state["dir_z_num"] = 1.0
+    if "dir_x_sld" not in st.session_state:
+        st.session_state["dir_x_sld"] = float(np.clip(st.session_state["dir_x_num"], -3.0, 3.0))
+    if "dir_y_sld" not in st.session_state:
+        st.session_state["dir_y_sld"] = float(np.clip(st.session_state["dir_y_num"], -3.0, 3.0))
+    if "dir_z_sld" not in st.session_state:
+        st.session_state["dir_z_sld"] = float(np.clip(st.session_state["dir_z_num"], -3.0, 3.0))
+
+    if "theta_num" not in st.session_state or "phi_num" not in st.session_state:
+        theta, phi = _angles_from_xyz_deg(
+            float(st.session_state["dir_x_num"]),
+            float(st.session_state["dir_y_num"]),
+            float(st.session_state["dir_z_num"]),
+        )
+        st.session_state["theta_num"] = float(np.clip(theta, 0.0, 180.0))
+        st.session_state["phi_num"] = float(np.clip(phi, -180.0, 180.0))
+
+    if "theta_sld" not in st.session_state:
+        st.session_state["theta_sld"] = float(np.clip(st.session_state["theta_num"], 0.0, 180.0))
+    if "phi_sld" not in st.session_state:
+        st.session_state["phi_sld"] = float(np.clip(st.session_state["phi_num"], -180.0, 180.0))
 
 
 st.set_page_config(page_title="Spin Wave Explorer", layout="wide")
@@ -665,8 +870,8 @@ st.latex(
     \Big] \\
     &+ J_2 \sum_{\langle\!\langle ij \rangle\!\rangle} \mathbf{S}_i \cdot \mathbf{S}_j
     + D \sum_{\langle\!\langle ij \rangle\!\rangle} \hat{\mathbf D}\cdot(\mathbf{S}_i \times \mathbf{S}_j)
-    + J_3 \sum_{\langle\!\langle\!\langle ij \rangle\!\rangle\!\rangle} \mathbf{S}_i \cdot \mathbf{S}_j \\
-    &+ A \sum_i \left(S_i^x S_i^y + S_i^y S_i^x\right)
+    + J_3 \sum_{\langle\!\langle\!\langle ij \rangle\!\rangle\!\rangle} \mathbf{S}_i \cdot \mathbf{S}_j 
+    + A \sum_i \left(S_i^x S_i^y + S_i^y S_i^x\right)
     - h \sum_i \hat{\mathbf{n}} \cdot \mathbf{S}_i .
     \end{aligned}
     """
@@ -678,38 +883,168 @@ st.subheader("Model Parameters")
 
 pc1, pc2, pc3, pc4 = st.columns(4)
 with pc1:
-    spin_s = st.number_input(r"$S$ (Spin)", min_value=0.5, value=0.5, step=0.5, format="%.1f")
+    spin_s = _number_with_slider(
+        r"$S$ (Spin)",
+        "spin_s",
+        default=0.5,
+        slider_min=0.5,
+        slider_max=6.0,
+        number_step=0.5,
+        number_format="%.1f",
+        slider_step=0.5,
+        number_min=0.5,
+        number_max=6.0,
+    )
 with pc2:
-    anis_a = st.number_input(r"$A$", value=0.0, format="%.6f")
+    anis_a = _number_with_slider(r"$A$", "anis_a", default=0.0, slider_min=-3.0, slider_max=3.0)
 with pc3:
-    j1 = st.number_input(r"$J$", value=float(np.cos(5.0 * np.pi / 4.0)), format="%.6f")
+    j1 = _number_with_slider(
+        r"$J$",
+        "j1",
+        default=float(np.cos(5.0 * np.pi / 4.0)),
+        slider_min=-3.0,
+        slider_max=3.0,
+    )
 with pc4:
-    k_term = st.number_input(r"$K$", value=float(np.sin(5.0 * np.pi / 4.0)), format="%.6f")
+    k_term = _number_with_slider(
+        r"$K$",
+        "k_term",
+        default=float(np.sin(5.0 * np.pi / 4.0)),
+        slider_min=-3.0,
+        slider_max=3.0,
+    )
 
 pc5, pc6, pc7, pc8 = st.columns(4)
 with pc5:
-    gamma = st.number_input(r"$\Gamma$", value=-0.50, format="%.6f")
+    gamma = _number_with_slider(r"$\Gamma$", "gamma", default=-0.50, slider_min=-3.0, slider_max=3.0)
 with pc6:
-    gamma_p = st.number_input(r"$\Gamma'$", value=-0.0, format="%.6f")
+    gamma_p = _number_with_slider(r"$\Gamma'$", "gamma_p", default=-0.0, slider_min=-3.0, slider_max=3.0)
 with pc7:
-    d_term = st.number_input(r"$D$", value=0.0, format="%.6f")
+    d_term = _number_with_slider(r"$D$", "d_term", default=0.0, slider_min=-3.0, slider_max=3.0)
 with pc8:
-    j2 = st.number_input(r"$J_2$", value=0.0, format="%.6f")
+    j2 = _number_with_slider(r"$J_2$", "j2", default=0.0, slider_min=-3.0, slider_max=3.0)
 
 pc9, _, _, _ = st.columns(4)
 with pc9:
-    j3 = st.number_input(r"$J_3$", value=0.0, format="%.6f")
+    j3 = _number_with_slider(r"$J_3$", "j3", default=0.0, slider_min=-3.0, slider_max=3.0)
 
 st.subheader("Field and Direction")
-fcol1, fcol2, fcol3, fcol4 = st.columns(4)
-with fcol1:
-    dir_x = st.number_input("dir_x", value=1.0, format="%.6f")
-with fcol2:
-    dir_y = st.number_input("dir_y", value=1.0, format="%.6f")
-with fcol3:
-    dir_z = st.number_input("dir_z", value=1.0, format="%.6f")
-with fcol4:
-    b_strength = st.number_input("field_strength", value=4.0, min_value=0.0, format="%.6f")
+_init_direction_state()
+fd_left, fd_right = st.columns([3, 1])
+with fd_left:
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        st.number_input(
+            "dir_x",
+            key="dir_x_num",
+            format="%.6f",
+            on_change=_on_dir_number_change,
+            args=("x",),
+        )
+        st.slider(
+            "dir_x slider",
+            min_value=-3.0,
+            max_value=3.0,
+            step=0.01,
+            key="dir_x_sld",
+            on_change=_on_dir_slider_change,
+            args=("x",),
+            label_visibility="collapsed",
+        )
+    with d2:
+        st.number_input(
+            "dir_y",
+            key="dir_y_num",
+            format="%.6f",
+            on_change=_on_dir_number_change,
+            args=("y",),
+        )
+        st.slider(
+            "dir_y slider",
+            min_value=-3.0,
+            max_value=3.0,
+            step=0.01,
+            key="dir_y_sld",
+            on_change=_on_dir_slider_change,
+            args=("y",),
+            label_visibility="collapsed",
+        )
+    with d3:
+        st.number_input(
+            "dir_z",
+            key="dir_z_num",
+            format="%.6f",
+            on_change=_on_dir_number_change,
+            args=("z",),
+        )
+        st.slider(
+            "dir_z slider",
+            min_value=-3.0,
+            max_value=3.0,
+            step=0.01,
+            key="dir_z_sld",
+            on_change=_on_dir_slider_change,
+            args=("z",),
+            label_visibility="collapsed",
+        )
+
+    a1, a2 = st.columns(2)
+    with a1:
+        st.number_input(
+            "theta (deg)",
+            min_value=0.0,
+            max_value=180.0,
+            key="theta_num",
+            format="%.6f",
+            on_change=_on_theta_number_change,
+        )
+        st.slider(
+            "theta slider",
+            min_value=0.0,
+            max_value=180.0,
+            step=0.1,
+            key="theta_sld",
+            on_change=_on_theta_slider_change,
+            label_visibility="collapsed",
+        )
+    with a2:
+        st.number_input(
+            "phi (deg)",
+            min_value=-180.0,
+            max_value=180.0,
+            key="phi_num",
+            format="%.6f",
+            on_change=_on_phi_number_change,
+        )
+        st.slider(
+            "phi slider",
+            min_value=-180.0,
+            max_value=180.0,
+            step=0.1,
+            key="phi_sld",
+            on_change=_on_phi_slider_change,
+            label_visibility="collapsed",
+        )
+with fd_right:
+    # Vertical spacer so field_strength is centered between the two left rows.
+    st.markdown("<div style='height: 3.2rem;'></div>", unsafe_allow_html=True)
+    b_strength = _number_with_slider(
+        "field_strength",
+        "b_strength",
+        default=4.0,
+        slider_min=0.0,
+        slider_max=50.0,
+        number_step=0.1,
+        number_format="%.6f",
+        slider_step=0.1,
+        number_min=0.0,
+        number_max=50.0,
+    )
+    st.markdown("<div style='height: 3.2rem;'></div>", unsafe_allow_html=True)
+
+dir_x = float(st.session_state["dir_x_num"])
+dir_y = float(st.session_state["dir_y_num"])
+dir_z = float(st.session_state["dir_z_num"])
 
 st.subheader("Resolution")
 r1, r2, r3, r4 = st.columns(4)
