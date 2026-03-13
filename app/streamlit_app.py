@@ -643,7 +643,7 @@ if st.button("Run", type="primary"):
     solver = MagnonLSWT(model)
 
     try:
-        with st.spinner("Computing band cut, contour, Berry curvature, and Chern number..."):
+        with st.spinner("Computing band cut, contour, Berry curvature, and Chern number... this may take ~10 seconds or more for high resolutions."):
             s_vals, k_vals, s_nodes, labels = _build_kpath(int(path_pts), cut_path_mode)
             bands = solver.solve_band_structure(k_vals)
             sorted_bands = np.sort(bands, axis=1)
