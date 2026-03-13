@@ -980,6 +980,12 @@ with pc9:
     j3 = _number_with_slider(r"$J_3$", "j3", default=0.0, slider_min=-3.0, slider_max=3.0)
 
 st.subheader("Field and Direction")
+st.caption(
+    r"Direction can be set in two equivalent ways: Cartesian $[d_x,d_y,d_z]$ or angles $(\theta,\phi)$ with "
+    r"$\hat{\mathbf n}=(\sin\theta\cos\phi,\,\sin\theta\sin\phi,\,\cos\theta)$. "
+    r"The app keeps both parameterizations synchronized automatically, so you only need to edit one row. "
+    r"The field magnitude is controlled by `h = field_strength`, i.e. $\mathbf h = h\,\hat{\mathbf n}$"
+)
 _init_direction_state()
 fd_left, fd_right = st.columns([3, 1])
 with fd_left:
