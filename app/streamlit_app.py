@@ -610,6 +610,11 @@ def _plot_berry_curvature_from_data(
     return fig
 
 
+def _scale_from_center_slider(ctrl: float) -> float:
+    """Map centered slider control in [-1, 1] to zoom scale, with 0 -> 1."""
+    return float(10.0 ** ctrl)
+
+
 st.set_page_config(page_title="Spin Wave Explorer", layout="wide")
 st.title("Spin Wave Explorer")
 st.markdown(
@@ -834,7 +839,8 @@ if "last_results" in st.session_state:
 
     c1, c2, c3 = st.columns([1.2, 1.2, 1.2], vertical_alignment="top")
     with c1:
-        cut_zoom = float(st.session_state.get("cut_zoom", 1.0))
+        cut_zoom_ctrl = float(st.session_state.get("cut_zoom_ctrl", 0.0))
+        cut_zoom = _scale_from_center_slider(cut_zoom_ctrl)
         fig_cut = _plot_band_cut_scaled(
             res["s_vals"],
             res["bands"],
@@ -843,7 +849,15 @@ if "last_results" in st.session_state:
             float(cut_zoom),
         )
         st.pyplot(fig_cut, clear_figure=True)
-        st.slider("Band cut y-zoom", min_value=1.0, max_value=30.0, value=1.0, step=0.5, key="cut_zoom")
+        st.slider(
+            "Band cut y-scale (center=1)",
+            min_value=-1.0,
+            max_value=1.0,
+            value=0.0,
+            step=0.05,
+            key="cut_zoom_ctrl",
+        )
+        st.caption(f"Band cut scale = {cut_zoom:.3g}")
         if res["gapless_warning"]:
             st.warning("Potentially nodal. Needs scaling analysis.")
         pdf_cut = _figure_to_pdf_bytes(fig_cut)
@@ -867,7 +881,8 @@ if "last_results" in st.session_state:
                 use_container_width=True,
             )
     with c2:
-        contour_zoom = float(st.session_state.get("contour_zoom", 1.0))
+        contour_zoom_ctrl = float(st.session_state.get("contour_zoom_ctrl", 0.0))
+        contour_zoom = _scale_from_center_slider(contour_zoom_ctrl)
         fig_contour = _plot_band_contour_from_data(
             res["contour_data"],
             int(res["topo_band_index"]),
@@ -875,13 +890,14 @@ if "last_results" in st.session_state:
         )
         st.pyplot(fig_contour, clear_figure=True)
         st.slider(
-            "Band contour color zoom",
-            min_value=1.0,
-            max_value=30.0,
-            value=1.0,
-            step=0.5,
-            key="contour_zoom",
+            "Band contour color scale (center=1)",
+            min_value=-1.0,
+            max_value=1.0,
+            value=0.0,
+            step=0.05,
+            key="contour_zoom_ctrl",
         )
+        st.caption(f"Band contour scale = {contour_zoom:.3g}")
         if res["gapless_warning"]:
             st.warning("Potentially nodal. Needs scaling analysis.")
         pdf_contour = _figure_to_pdf_bytes(fig_contour)
@@ -905,7 +921,8 @@ if "last_results" in st.session_state:
                 use_container_width=True,
             )
     with c3:
-        berry_zoom = float(st.session_state.get("berry_zoom", 1.0))
+        berry_zoom_ctrl = float(st.session_state.get("berry_zoom_ctrl", 0.0))
+        berry_zoom = _scale_from_center_slider(berry_zoom_ctrl)
         fig_berry = _plot_berry_curvature_from_data(
             res["berry_data"],
             float(res["chern"]),
@@ -914,13 +931,14 @@ if "last_results" in st.session_state:
         )
         st.pyplot(fig_berry, clear_figure=True)
         st.slider(
-            "Berry color zoom",
-            min_value=1.0,
-            max_value=30.0,
-            value=1.0,
-            step=0.5,
-            key="berry_zoom",
+            "Berry color scale (center=1)",
+            min_value=-1.0,
+            max_value=1.0,
+            value=0.0,
+            step=0.05,
+            key="berry_zoom_ctrl",
         )
+        st.caption(f"Berry scale = {berry_zoom:.3g}")
         if res["chern_warning"]:
             st.warning("Don't trust! Chern may be unreliable when Δmin < 1e-2.")
         pdf_berry = _figure_to_pdf_bytes(fig_berry)
