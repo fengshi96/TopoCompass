@@ -897,6 +897,21 @@ st.markdown(
         line-height: 1.55 !important;
     }
 
+    .fd-separator {
+        border-left: 1px solid #6b7280;
+        min-height: 6.2rem;
+        margin: 0 auto;
+    }
+    @media (max-width: 768px) {
+        .fd-separator {
+            border-left: none;
+            border-top: 1px solid #6b7280;
+            min-height: 0;
+            width: 100%;
+            margin: 0.35rem 0;
+        }
+    }
+
     </style>
     <p class="app-lead">
     Automated generator and solver of magnon bilinears for generic spin-orbit coupled honeycomb Mott insulators
@@ -1044,7 +1059,7 @@ with fd_cols[2]:
         label_visibility="collapsed",
     )
 with fd_cols[3]:
-    st.markdown("<div style='height: 0.7rem; border-left: 1px solid #6b7280; min-height: 6.2rem; margin: 0 auto;'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='fd-separator'></div>", unsafe_allow_html=True)
 with fd_cols[4]:
     st.number_input(
         r"$\theta$ (deg)",
@@ -1082,7 +1097,7 @@ with fd_cols[5]:
         label_visibility="collapsed",
     )
 with fd_cols[6]:
-    st.markdown("<div style='height: 0.7rem; border-left: 1px solid #6b7280; min-height: 6.2rem; margin: 0 auto;'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='fd-separator'></div>", unsafe_allow_html=True)
 with fd_cols[7]:
     b_strength = _number_with_slider(
         "field_strength",
