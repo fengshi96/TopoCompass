@@ -231,6 +231,26 @@ def _plot_band_cut(s_vals: np.ndarray, bands: np.ndarray, s_nodes: np.ndarray, l
     return fig
 
 
+def _plot_band_cut_scaled(
+    s_vals: np.ndarray,
+    bands: np.ndarray,
+    s_nodes: np.ndarray,
+    labels: list[str],
+    zoom: float,
+):
+    fig = _plot_band_cut(s_vals, bands, s_nodes, labels)
+    ax = fig.axes[0]
+
+    bands_sorted = np.sort(bands, axis=1)
+    gap_vals = bands_sorted[:, 1] - bands_sorted[:, 0]
+    min_idx = int(np.argmin(gap_vals))
+    center = 0.5 * (float(bands_sorted[min_idx, 0]) + float(bands_sorted[min_idx, 1]))
+    half_span = float(np.max(np.abs(bands - center)))
+    y_half = max(half_span / max(zoom, 1e-6), 1e-6)
+    ax.set_ylim(center - y_half, center + y_half)
+    return fig
+
+
 def _plot_band_contour(solver, nk: int, band_index: int):
     bmat = np.array([[1.0, 0.0], [-0.5, np.sqrt(3.0) / 2.0]], dtype=float)
     inv_bmat = np.linalg.inv(bmat)
@@ -479,6 +499,117 @@ def _plot_berry_curvature(
     return fig, {"kx": kx, "ky": ky, "curvature": curv_plot}
 
 
+def _plot_band_contour_from_data(contour_data: dict[str, np.ndarray], band_index: int, zoom: float):
+    kx = contour_data["kx"]
+    ky = contour_data["ky"]
+    z = contour_data["energy"]
+
+    zmin = float(np.min(z))
+    zmax = float(np.max(z))
+    zmid = 0.5 * (zmin + zmax)
+    zhalf = max(0.5 * (zmax - zmin) / max(zoom, 1e-6), 1e-9)
+
+    bmat = np.array([[1.0, 0.0], [-0.5, np.sqrt(3.0) / 2.0]], dtype=float)
+    inv_bmat = np.linalg.inv(bmat)
+    bz_q = (2.0 * np.pi / 3.0) * np.array(
+        [[1, 1], [2, -1], [1, -2], [-1, -1], [-2, 1], [-1, 2], [1, 1]], dtype=float
+    )
+    bz_plot = bz_q @ inv_bmat.T
+
+    hs_q = {
+        "G": np.array([0.0, 0.0], dtype=float),
+        "K": np.array([2.0 * np.pi / 3.0, 2.0 * np.pi / 3.0], dtype=float),
+        "K'": np.array([-2.0 * np.pi / 3.0, -2.0 * np.pi / 3.0], dtype=float),
+        "M": np.array([np.pi, 0.0], dtype=float),
+        "M'": np.array([0.0, np.pi], dtype=float),
+        "M''": np.array([-np.pi, np.pi], dtype=float),
+    }
+    hs_plot = {label: inv_bmat @ q for label, q in hs_q.items()}
+
+    fig, ax = plt.subplots(figsize=(4.0, 3.0), constrained_layout=True)
+    im = ax.imshow(
+        z,
+        extent=[float(kx[0]), float(kx[-1]), float(ky[0]), float(ky[-1])],
+        origin="lower",
+        interpolation="bicubic",
+        cmap="magma",
+        vmin=zmid - zhalf,
+        vmax=zmid + zhalf,
+        aspect="auto",
+    )
+    ax.plot(bz_plot[:, 0], bz_plot[:, 1], color="#e11d48", ls="--", lw=0.9)
+    marker_color = "#67e8f9"
+    for label, xy in hs_plot.items():
+        ax.scatter(xy[0], xy[1], s=22, c=marker_color, edgecolors="#ecfeff", linewidths=0.4, zorder=3)
+        ax.text(
+            float(xy[0]),
+            float(xy[1]),
+            label,
+            color=marker_color,
+            fontsize=9,
+            va="bottom",
+            ha="left",
+            bbox=dict(boxstyle="round,pad=0.12", facecolor="black", alpha=0.55, edgecolor="none"),
+        )
+    ax.set_xlabel(r"$k_x$")
+    ax.set_ylabel(r"$k_y$")
+    _apply_pi_ticks(ax)
+    band_label = "Lower" if band_index == 0 else "Upper"
+    ax.set_title(f"Band Contour ({band_label})")
+    fig.colorbar(im, ax=ax, label=r"$E(k)$")
+    return fig
+
+
+def _plot_berry_curvature_from_data(
+    berry_data: dict[str, np.ndarray],
+    chern: float,
+    band_index: int,
+    zoom: float,
+):
+    kx = berry_data["kx"]
+    ky = berry_data["ky"]
+    curv_plot = berry_data["curvature"]
+
+    bmat = np.array([[1.0, 0.0], [-0.5, np.sqrt(3.0) / 2.0]], dtype=float)
+    inv_bmat = np.linalg.inv(bmat)
+    bz_q = (2.0 * np.pi / 3.0) * np.array(
+        [[1, 1], [2, -1], [1, -2], [-1, -1], [-2, 1], [-1, 2], [1, 1]], dtype=float
+    )
+    bz_plot = bz_q @ inv_bmat.T
+
+    half = max(5.0 / max(zoom, 1e-6), 1e-6)
+
+    fig, ax = plt.subplots(figsize=(4.0, 3.0), constrained_layout=True)
+    im = ax.imshow(
+        curv_plot,
+        extent=[float(kx[0]), float(kx[-1]), float(ky[0]), float(ky[-1])],
+        origin="lower",
+        interpolation="nearest",
+        cmap="RdBu_r",
+        vmin=-half,
+        vmax=half,
+        aspect="auto",
+    )
+    ax.plot(bz_plot[:, 0], bz_plot[:, 1], color="#e11d48", ls="--", lw=0.9)
+    ax.set_xlabel(r"$k_x$")
+    ax.set_ylabel(r"$k_y$")
+    _apply_pi_ticks(ax)
+    band_label = "Lower" if band_index == 0 else "Upper"
+    ax.set_title(f"Berry Curvature ({band_label})")
+    ax.text(
+        0.03,
+        0.97,
+        rf"$C_{{\mathrm{{band}}}}={chern:.3f}$",
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        fontsize=10,
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.75, edgecolor="white"),
+    )
+    fig.colorbar(im, ax=ax, label=r"$\Omega(k)$")
+    return fig
+
+
 st.set_page_config(page_title="Spin Wave Explorer", layout="wide")
 st.title("Spin Wave Explorer")
 st.markdown(
@@ -669,15 +800,27 @@ if st.button("Run", type="primary"):
                 topo_band_index,
             )
 
-            pdf_cut = _figure_to_pdf_bytes(fig_cut)
-            pdf_contour = _figure_to_pdf_bytes(fig_contour)
-            pdf_berry = _figure_to_pdf_bytes(fig_berry)
-
             cut_header = "s,kx,ky,band0,band1"
             cut_data = np.column_stack([s_vals, k_vals[:, 0], k_vals[:, 1], bands[:, 0], bands[:, 1]])
             csv_cut = _matrix_to_csv_bytes(cut_data, cut_header)
             csv_contour = _grid_to_csv_bytes(contour_data["kx"], contour_data["ky"], contour_data["energy"], "energy")
             csv_berry = _grid_to_csv_bytes(berry_data["kx"], berry_data["ky"], berry_data["curvature"], "curvature")
+
+            st.session_state["last_results"] = {
+                "s_vals": s_vals,
+                "bands": bands,
+                "s_nodes": s_nodes,
+                "labels": labels,
+                "contour_data": contour_data,
+                "berry_data": berry_data,
+                "topo_band_index": topo_band_index,
+                "gapless_warning": gapless_warning,
+                "chern_warning": chern_warning,
+                "chern": chern,
+                "csv_cut": csv_cut,
+                "csv_contour": csv_contour,
+                "csv_berry": csv_berry,
+            }
     except RuntimeError as exc:
         st.error("Solver failed for this parameter set.")
         st.caption(str(exc))
@@ -686,11 +829,24 @@ if st.button("Run", type="primary"):
         )
         st.stop()
 
+if "last_results" in st.session_state:
+    res = st.session_state["last_results"]
+
     c1, c2, c3 = st.columns([1.2, 1.2, 1.2], vertical_alignment="top")
     with c1:
+        cut_zoom = float(st.session_state.get("cut_zoom", 1.0))
+        fig_cut = _plot_band_cut_scaled(
+            res["s_vals"],
+            res["bands"],
+            res["s_nodes"],
+            res["labels"],
+            float(cut_zoom),
+        )
         st.pyplot(fig_cut, clear_figure=True)
-        if gapless_warning:
+        st.slider("Band cut y-zoom", min_value=1.0, max_value=30.0, value=1.0, step=0.5, key="cut_zoom")
+        if res["gapless_warning"]:
             st.warning("Potentially nodal. Needs scaling analysis.")
+        pdf_cut = _figure_to_pdf_bytes(fig_cut)
         b11, b12 = st.columns(2)
         with b11:
             st.download_button(
@@ -704,16 +860,31 @@ if st.button("Run", type="primary"):
         with b12:
             st.download_button(
                 "Save Data",
-                data=csv_cut,
+                data=res["csv_cut"],
                 file_name="band_cut.csv",
                 mime="text/csv",
                 key="download_band_cut_csv",
                 use_container_width=True,
             )
     with c2:
+        contour_zoom = float(st.session_state.get("contour_zoom", 1.0))
+        fig_contour = _plot_band_contour_from_data(
+            res["contour_data"],
+            int(res["topo_band_index"]),
+            float(contour_zoom),
+        )
         st.pyplot(fig_contour, clear_figure=True)
-        if gapless_warning:
+        st.slider(
+            "Band contour color zoom",
+            min_value=1.0,
+            max_value=30.0,
+            value=1.0,
+            step=0.5,
+            key="contour_zoom",
+        )
+        if res["gapless_warning"]:
             st.warning("Potentially nodal. Needs scaling analysis.")
+        pdf_contour = _figure_to_pdf_bytes(fig_contour)
         b21, b22 = st.columns(2)
         with b21:
             st.download_button(
@@ -727,22 +898,38 @@ if st.button("Run", type="primary"):
         with b22:
             st.download_button(
                 "Save Data",
-                data=csv_contour,
-                file_name=f"band_contour_band_{topo_band_index}.csv",
+                data=res["csv_contour"],
+                file_name=f"band_contour_band_{int(res['topo_band_index'])}.csv",
                 mime="text/csv",
                 key="download_band_contour_csv",
                 use_container_width=True,
             )
     with c3:
+        berry_zoom = float(st.session_state.get("berry_zoom", 1.0))
+        fig_berry = _plot_berry_curvature_from_data(
+            res["berry_data"],
+            float(res["chern"]),
+            int(res["topo_band_index"]),
+            float(berry_zoom),
+        )
         st.pyplot(fig_berry, clear_figure=True)
-        if chern_warning:
+        st.slider(
+            "Berry color zoom",
+            min_value=1.0,
+            max_value=30.0,
+            value=1.0,
+            step=0.5,
+            key="berry_zoom",
+        )
+        if res["chern_warning"]:
             st.warning("Don't trust! Chern may be unreliable when Δmin < 1e-2.")
+        pdf_berry = _figure_to_pdf_bytes(fig_berry)
         b31, b32 = st.columns(2)
         with b31:
             st.download_button(
                 "Save Figure",
                 data=pdf_berry,
-                file_name=f"berry_curvature_band_{topo_band_index}.pdf",
+                file_name=f"berry_curvature_band_{int(res['topo_band_index'])}.pdf",
                 mime="application/pdf",
                 key="download_berry_curvature_pdf",
                 use_container_width=True,
@@ -750,8 +937,8 @@ if st.button("Run", type="primary"):
         with b32:
             st.download_button(
                 "Save Data",
-                data=csv_berry,
-                file_name=f"berry_curvature_band_{topo_band_index}.csv",
+                data=res["csv_berry"],
+                file_name=f"berry_curvature_band_{int(res['topo_band_index'])}.csv",
                 mime="text/csv",
                 key="download_berry_curvature_csv",
                 use_container_width=True,
