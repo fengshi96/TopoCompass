@@ -1249,6 +1249,7 @@ if "last_results" in st.session_state:
             res["labels"],
             float(cut_zoom),
         )
+        pdf_cut = _figure_to_pdf_bytes(fig_cut)
         st.pyplot(fig_cut, clear_figure=True)
         st.slider(
             "Band cut y-scale",
@@ -1261,7 +1262,6 @@ if "last_results" in st.session_state:
         st.caption(f"Band cut scale = {cut_zoom:.3g}")
         if res["gapless_warning"]:
             st.warning("Potentially nodal. Needs scaling analysis.")
-        pdf_cut = _figure_to_pdf_bytes(fig_cut)
         b11, b12 = st.columns(2)
         with b11:
             st.download_button(
@@ -1289,6 +1289,7 @@ if "last_results" in st.session_state:
             int(res["topo_band_index"]),
             float(contour_zoom),
         )
+        pdf_contour = _figure_to_pdf_bytes(fig_contour)
         st.pyplot(fig_contour, clear_figure=True)
         st.slider(
             "Band contour color scale",
@@ -1301,7 +1302,6 @@ if "last_results" in st.session_state:
         st.caption(f"Band contour scale = {contour_zoom:.3g}")
         if res["gapless_warning"]:
             st.warning("Potentially nodal. Needs scaling analysis.")
-        pdf_contour = _figure_to_pdf_bytes(fig_contour)
         b21, b22 = st.columns(2)
         with b21:
             st.download_button(
@@ -1330,6 +1330,7 @@ if "last_results" in st.session_state:
             int(res["topo_band_index"]),
             float(berry_zoom),
         )
+        pdf_berry = _figure_to_pdf_bytes(fig_berry)
         st.pyplot(fig_berry, clear_figure=True)
         st.slider(
             "Berry color scale",
@@ -1342,7 +1343,6 @@ if "last_results" in st.session_state:
         st.caption(f"Berry scale = {berry_zoom:.3g}")
         if res["chern_warning"]:
             st.warning("Don't trust! Chern may be unreliable when Δmin < 1e-2.")
-        pdf_berry = _figure_to_pdf_bytes(fig_berry)
         b31, b32 = st.columns(2)
         with b31:
             st.download_button(
