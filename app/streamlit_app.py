@@ -181,6 +181,13 @@ def _figure_to_pdf_bytes(fig: plt.Figure) -> bytes:
                     patch.set_edgecolor(tstate["bbox_ec"])
 
 
+def _figure_to_png_bytes(fig: plt.Figure) -> bytes:
+    buf = BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=200)
+    buf.seek(0)
+    return buf.getvalue()
+
+
 def _plot_band_cut(s_vals: np.ndarray, bands: np.ndarray, s_nodes: np.ndarray, labels: list[str]):
     fig, ax = plt.subplots(figsize=(4.0, 3.0), constrained_layout=True)
     colors = ["#facc15", "#22d3ee", "#f472b6", "#86efac"]
@@ -1143,6 +1150,9 @@ with sel_col2:
 topo_band_index = 0 if band_choice.startswith("Lower") else 1
 
 if st.button("Run", type="primary"):
+    run_id = int(st.session_state.get("_run_id_counter", 0)) + 1
+    st.session_state["_run_id_counter"] = run_id
+
     direction = np.array([dir_x, dir_y, dir_z], dtype=float)
     direction_norm = float(np.linalg.norm(direction))
     if direction_norm < 1e-12:
@@ -1213,6 +1223,7 @@ if st.button("Run", type="primary"):
             csv_berry = _grid_to_csv_bytes(berry_data["kx"], berry_data["ky"], berry_data["curvature"], "curvature")
 
             st.session_state["last_results"] = {
+                "run_id": run_id,
                 "s_vals": s_vals,
                 "bands": bands,
                 "s_nodes": s_nodes,
@@ -1324,14 +1335,34 @@ if "last_results" in st.session_state:
     with c3:
         berry_zoom_ctrl = float(st.session_state.get("berry_zoom_ctrl", 0.0))
         berry_zoom = _scale_from_center_slider(berry_zoom_ctrl)
-        fig_berry = _plot_berry_curvature_from_data(
-            res["berry_data"],
-            float(res["chern"]),
-            int(res["topo_band_index"]),
-            float(berry_zoom),
+
+        berry_cache = st.session_state.get("_berry_panel_cache")
+        cache_hit = (
+            isinstance(berry_cache, dict)
+            and int(berry_cache.get("run_id", -1)) == int(res["run_id"])
+            and np.isclose(float(berry_cache.get("zoom_ctrl", 999.0)), berry_zoom_ctrl)
         )
-        pdf_berry = _figure_to_pdf_bytes(fig_berry)
-        st.pyplot(fig_berry, clear_figure=True)
+        if cache_hit:
+            berry_png = berry_cache["png"]
+            pdf_berry = berry_cache["pdf"]
+        else:
+            fig_berry = _plot_berry_curvature_from_data(
+                res["berry_data"],
+                float(res["chern"]),
+                int(res["topo_band_index"]),
+                float(berry_zoom),
+            )
+            berry_png = _figure_to_png_bytes(fig_berry)
+            pdf_berry = _figure_to_pdf_bytes(fig_berry)
+            plt.close(fig_berry)
+            st.session_state["_berry_panel_cache"] = {
+                "run_id": int(res["run_id"]),
+                "zoom_ctrl": float(berry_zoom_ctrl),
+                "png": berry_png,
+                "pdf": pdf_berry,
+            }
+
+        st.image(berry_png, use_container_width=True)
         st.slider(
             "Berry color scale",
             min_value=-1.0,
