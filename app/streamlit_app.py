@@ -1119,7 +1119,7 @@ with r1:
 with r2:
     contour_nk = st.number_input("Band contour grid", min_value=20, max_value=401, value=30, step=10)
 with r3:
-    chern_grid = st.number_input("Berry curvature grid", min_value=60, max_value=301, value=60, step=10)
+    chern_grid = st.number_input("Berry curvature grid", min_value=30, max_value=2000, value=30, step=10)
 with r4:
     chern_num = st.number_input("BZ discretization for Chern number (FHS)", min_value=4, max_value=201, value=8, step=1)
 
@@ -1201,7 +1201,7 @@ if st.button("Run", type="primary"):
             )
             fig_berry, berry_data = _plot_berry_curvature(
                 payload,
-                int(contour_nk),
+                int(chern_grid),
                 chern,
                 topo_band_index,
             )
