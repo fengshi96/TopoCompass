@@ -820,6 +820,45 @@ def _init_direction_state() -> None:
         st.session_state["phi_sld"] = float(np.clip(st.session_state["phi_num"], -180.0, 180.0))
 
 
+def _reset_controls_to_defaults() -> None:
+    defaults: dict[str, float] = {
+        "spin_s_num": 0.5,
+        "spin_s_sld": 0.5,
+        "anis_a_num": 0.0,
+        "anis_a_sld": 0.0,
+        "j1_num": float(np.cos(5.0 * np.pi / 4.0)),
+        "j1_sld": float(np.cos(5.0 * np.pi / 4.0)),
+        "k_term_num": float(np.sin(5.0 * np.pi / 4.0)),
+        "k_term_sld": float(np.sin(5.0 * np.pi / 4.0)),
+        "gamma_num": -0.50,
+        "gamma_sld": -0.50,
+        "gamma_p_num": -0.0,
+        "gamma_p_sld": -0.0,
+        "d_term_num": 0.0,
+        "d_term_sld": 0.0,
+        "j2_num": 0.0,
+        "j2_sld": 0.0,
+        "j3_num": 0.0,
+        "j3_sld": 0.0,
+        "dir_x_num": 1.0,
+        "dir_x_sld": 1.0,
+        "dir_y_num": 1.0,
+        "dir_y_sld": 1.0,
+        "dir_z_num": 1.0,
+        "dir_z_sld": 1.0,
+        "b_strength_num": 4.0,
+        "b_strength_sld": 4.0,
+    }
+    for k, v in defaults.items():
+        st.session_state[k] = v
+
+    theta, phi = _angles_from_xyz_deg(1.0, 1.0, 1.0)
+    st.session_state["theta_num"] = theta
+    st.session_state["theta_sld"] = theta
+    st.session_state["phi_num"] = phi
+    st.session_state["phi_sld"] = phi
+
+
 st.set_page_config(page_title="Spin Wave Explorer", layout="wide")
 st.title("Spin Wave Explorer")
 st.markdown(
@@ -880,6 +919,10 @@ _last_updated = datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime(
 st.caption(f"Last updated: {_last_updated}")
 
 st.subheader("Model Parameters")
+
+if st.button("Reset to reference defaults"):
+    _reset_controls_to_defaults()
+    st.rerun()
 
 pc1, pc2, pc3, pc4 = st.columns(4)
 with pc1:
@@ -1045,6 +1088,28 @@ with fd_right:
 dir_x = float(st.session_state["dir_x_num"])
 dir_y = float(st.session_state["dir_y_num"])
 dir_z = float(st.session_state["dir_z_num"])
+
+with st.expander("Effective values for next Run", expanded=False):
+    st.caption("These are the exact UI values that will be sent to the solver when Run is clicked.")
+    st.write(
+        {
+            "S": float(spin_s),
+            "A": float(anis_a),
+            "J": float(j1),
+            "K": float(k_term),
+            "Gamma": float(gamma),
+            "Gamma_prime": float(gamma_p),
+            "D": float(d_term),
+            "J2": float(j2),
+            "J3": float(j3),
+            "dir_x": float(dir_x),
+            "dir_y": float(dir_y),
+            "dir_z": float(dir_z),
+            "theta_deg": float(st.session_state["theta_num"]),
+            "phi_deg": float(st.session_state["phi_num"]),
+            "field_strength": float(b_strength),
+        }
+    )
 
 st.subheader("Resolution")
 r1, r2, r3, r4 = st.columns(4)
