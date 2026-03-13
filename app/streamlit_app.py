@@ -1124,36 +1124,38 @@ with st.expander("Effective values for next Run", expanded=False):
     )
 
 st.subheader("Resolution")
-r1, r2, r3, r4 = st.columns(4)
-with r1:
-    path_pts = st.number_input("k-path points/segment", min_value=20, max_value=400, value=30, step=10)
-with r2:
-    contour_nk = st.number_input("Band contour grid", min_value=20, max_value=401, value=30, step=10)
-with r3:
-    chern_grid = st.number_input("Berry curvature grid", min_value=30, max_value=2000, value=30, step=10)
-with r4:
-    chern_num = st.number_input("BZ discretization for Chern number (FHS)", min_value=4, max_value=201, value=8, step=1)
+with st.form("run_controls_form"):
+    r1, r2, r3, r4 = st.columns(4)
+    with r1:
+        path_pts = st.number_input("k-path points/segment", min_value=20, max_value=400, value=30, step=10)
+    with r2:
+        contour_nk = st.number_input("Band contour grid", min_value=20, max_value=401, value=30, step=10)
+    with r3:
+        chern_grid = st.number_input("Berry curvature grid", min_value=30, max_value=2000, value=30, step=10)
+    with r4:
+        chern_num = st.number_input("BZ discretization for Chern number (FHS)", min_value=4, max_value=201, value=8, step=1)
 
-sel_col1, sel_col2 = st.columns(2)
-with sel_col1:
-    band_choice = st.selectbox(
-        "Band Selection for Contours",
-        options=["Lower positive band (index 0)", "Upper positive band (index 1)"],
-        index=1,
-    )
-with sel_col2:
-    cut_path_mode = st.selectbox(
-        "Band-cut path",
-        options=[
-            "K-G-M-K",
-            "K-G-M-G-M'-G-M''-G-K'",
-        ],
-        index=0,
-    )
+    sel_col1, sel_col2 = st.columns(2)
+    with sel_col1:
+        band_choice = st.selectbox(
+            "Band Selection for Contours",
+            options=["Lower positive band (index 0)", "Upper positive band (index 1)"],
+            index=1,
+        )
+    with sel_col2:
+        cut_path_mode = st.selectbox(
+            "Band-cut path",
+            options=[
+                "K-G-M-K",
+                "K-G-M-G-M'-G-M''-G-K'",
+            ],
+            index=0,
+        )
 
-topo_band_index = 0 if band_choice.startswith("Lower") else 1
+    topo_band_index = 0 if band_choice.startswith("Lower") else 1
+    run_clicked = st.form_submit_button("Run", type="primary")
 
-if st.button("Run", type="primary"):
+if run_clicked:
     run_id = int(st.session_state.get("_run_id_counter", 0)) + 1
     st.session_state["_run_id_counter"] = run_id
 
